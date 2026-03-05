@@ -1,21 +1,6 @@
-"""
-WhatsApp Clone - Python Flask Backend
-======================================
-Real-time multi-user chat using:
-  - Flask (web framework)
-  - SQLite (database)
-  - Server-Sent Events (real-time push)
-  - Sessions (authentication)
-
-Run: python app.py
-Open: http://localhost:5000
-Share on LAN: http://<your-ip>:5000
-"""
-
 import sqlite3
 import hashlib
 import json
-import time
 import queue
 import threading
 from datetime import datetime
@@ -25,25 +10,23 @@ from flask import (
 )
 
 app = Flask(__name__)
-app.secret_key = "whatsapp_clone_secret_key_change_in_production"
+app.secret_key = "whatsapp_clone_secret_key_2024"
 
-DB_PATH = "whatsapp.db"
+DB_PATH = "/tmp/whatsapp.db"
 
-# ─── SSE MESSAGE BROKER ──────────────────────────────────────────────────────
-# Each connected client gets a queue; new messages are broadcast to all queues.
 
 class MessageBroker:
     def __init__(self):
-        self.listeners: dict[int, list[queue.Queue]] = {}  # user_id -> [queues]
+        self.listeners = {}
         self.lock = threading.Lock()
 
-    def subscribe(self, user_id: int) -> queue.Queue:
+    def subscribe(self, user_id):
         q = queue.Queue(maxsize=50)
         with self.lock:
             self.listeners.setdefault(user_id, []).append(q)
         return q
 
-    def unsubscribe(self, user_id: int, q: queue.Queue):
+    def unsubscribe(self, user_id, q):
         with self.lock:
             if user_id in self.listeners:
                 try:
@@ -51,8 +34,7 @@ class MessageBroker:
                 except ValueError:
                     pass
 
-    def notify(self, user_id: int, data: dict):
-        """Send an event to a specific user."""
+    def notify(self, user_id, data):
         with self.lock:
             for q in self.listeners.get(user_id, []):
                 try:
@@ -60,15 +42,9 @@ class MessageBroker:
                 except queue.Full:
                     pass
 
-    def broadcast_to_conversation(self, participant_ids: list[int], data: dict):
-        for uid in participant_ids:
-            self.notify(uid, data)
-
 
 broker = MessageBroker()
 
-
-# ─── DATABASE ─────────────────────────────────────────────────────────────────
 
 def get_db():
     if "db" not in g:
@@ -99,7 +75,6 @@ def init_db():
             online   INTEGER NOT NULL DEFAULT 0,
             created  TEXT    NOT NULL DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS conversations (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             is_group   INTEGER NOT NULL DEFAULT 0,
@@ -107,13 +82,11 @@ def init_db():
             created_by INTEGER REFERENCES users(id),
             created    TEXT NOT NULL DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS participants (
             conv_id INTEGER NOT NULL REFERENCES conversations(id),
             user_id INTEGER NOT NULL REFERENCES users(id),
             PRIMARY KEY (conv_id, user_id)
         );
-
         CREATE TABLE IF NOT EXISTS messages (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
             conv_id INTEGER NOT NULL REFERENCES conversations(id),
@@ -122,17 +95,15 @@ def init_db():
             ts      TEXT    NOT NULL DEFAULT (datetime('now')),
             read_by TEXT    NOT NULL DEFAULT '[]'
         );
-
         CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conv_id, ts);
     """)
     conn.commit()
 
-    # Seed demo users
     demo_users = [
-        ("alice",   "alice123",   "", "Building cool stuff"),
-        ("bob",     "bob123",     "", "Music lover"),
-        ("carol",   "carol123",   "", "Bookworm"),
-        ("dave",    "dave123",    "", "Football fan"),
+        ("alice", "alice123", "S", "Building cool stuff"),
+        ("bob",   "bob123",   "B", "Music lover"),
+        ("carol", "carol123", "C", "Bookworm"),
+        ("dave",  "dave123",  "D", "Football fan"),
     ]
     for username, password, avatar, about in demo_users:
         existing = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
@@ -143,52 +114,43 @@ def init_db():
             )
     conn.commit()
 
-    # Seed demo conversations between demo users
     alice = conn.execute("SELECT id FROM users WHERE username='alice'").fetchone()
     bob   = conn.execute("SELECT id FROM users WHERE username='bob'").fetchone()
     carol = conn.execute("SELECT id FROM users WHERE username='carol'").fetchone()
     dave  = conn.execute("SELECT id FROM users WHERE username='dave'").fetchone()
 
     if alice and bob and carol and dave:
-        # Check if conversations already exist
         if not conn.execute("SELECT id FROM conversations LIMIT 1").fetchone():
-            # Direct chat: alice <-> bob
-            c1 = conn.execute(
-                "INSERT INTO conversations (is_group) VALUES (0)"
-            ).lastrowid
+            c1 = conn.execute("INSERT INTO conversations (is_group) VALUES (0)").lastrowid
             conn.execute("INSERT INTO participants VALUES (?,?)", (c1, alice["id"]))
             conn.execute("INSERT INTO participants VALUES (?,?)", (c1, bob["id"]))
             _seed_messages(conn, c1, [
-                (alice["id"], "Hey Bob! How are you? 👋"),
-                (bob["id"],   "Hey Alice! Doing great, thanks! 😊"),
-                (alice["id"], "Great! Want to work on that project together?"),
-                (bob["id"],   "Absolutely! Let's do it 🚀"),
+                (alice["id"], "Hey Bob! How are you?"),
+                (bob["id"],   "Hey Alice! Doing great!"),
+                (alice["id"], "Want to work on that project?"),
+                (bob["id"],   "Absolutely! Let's do it"),
             ])
 
-            # Direct chat: alice <-> carol
-            c2 = conn.execute(
-                "INSERT INTO conversations (is_group) VALUES (0)"
-            ).lastrowid
+            c2 = conn.execute("INSERT INTO conversations (is_group) VALUES (0)").lastrowid
             conn.execute("INSERT INTO participants VALUES (?,?)", (c2, alice["id"]))
             conn.execute("INSERT INTO participants VALUES (?,?)", (c2, carol["id"]))
             _seed_messages(conn, c2, [
-                (carol["id"], "Hey Alice, did you read that new book? 📚"),
+                (carol["id"], "Hey Alice, did you read that new book?"),
                 (alice["id"], "Not yet! Is it good?"),
-                (carol["id"], "It's amazing! You have to read it"),
+                (carol["id"], "It's amazing!"),
             ])
 
-            # Group: Dev Team
             c3 = conn.execute(
-                "INSERT INTO conversations (is_group,name,created_by) VALUES (1,'Dev Team 🚀',?)",
+                "INSERT INTO conversations (is_group,name,created_by) VALUES (1,'Dev Team',?)",
                 (alice["id"],)
             ).lastrowid
             for uid in [alice["id"], bob["id"], carol["id"], dave["id"]]:
                 conn.execute("INSERT INTO participants VALUES (?,?)", (c3, uid))
             _seed_messages(conn, c3, [
-                (alice["id"], "Welcome to the Dev Team group! 🎉"),
-                (bob["id"],   "Awesome! Ready to ship some code 💻"),
-                (carol["id"], "Let's crush it! 💪"),
-                (dave["id"],  "Wohooo!! 🔥"),
+                (alice["id"], "Welcome to Dev Team!"),
+                (bob["id"],   "Ready to ship code"),
+                (carol["id"], "Let's crush it!"),
+                (dave["id"],  "Let's go!!"),
             ])
 
     conn.commit()
@@ -197,18 +159,16 @@ def init_db():
 
 def _seed_messages(conn, conv_id, msgs):
     for i, (uid, text) in enumerate(msgs):
-        ts = datetime.now().strftime(f"%Y-%m-%d %H:%M:{i:02d}")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:") + str(i).zfill(2)
         conn.execute(
             "INSERT INTO messages (conv_id,user_id,text,ts) VALUES (?,?,?,?)",
             (conv_id, uid, text, ts)
         )
 
 
-def hash_password(pw: str) -> str:
+def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-
-# ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 def current_user():
     uid = session.get("user_id")
@@ -227,7 +187,7 @@ def require_login(f):
     return wrapper
 
 
-def format_time(ts_str: str) -> str:
+def format_time(ts_str):
     try:
         dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
     except ValueError:
@@ -242,8 +202,6 @@ def format_time(ts_str: str) -> str:
         return dt.strftime("%A")
     return dt.strftime("%d/%m/%Y")
 
-
-# ─── ROUTES ──────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -278,7 +236,7 @@ def register():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
-        avatar   = request.form.get("avatar", "😊")
+        avatar   = request.form.get("avatar", "U")
         if not username or not password:
             error = "Username and password required"
         elif len(username) < 3:
@@ -324,7 +282,6 @@ def chat():
     user = current_user()
     db   = get_db()
 
-    # All conversations this user is part of
     convs_raw = db.execute("""
         SELECT c.id, c.is_group, c.name,
                m.text AS last_text, m.ts AS last_ts, m.user_id AS last_uid
@@ -340,7 +297,6 @@ def chat():
     for c in convs_raw:
         conv = dict(c)
         if not c["is_group"]:
-            # Get the other participant
             other = db.execute("""
                 SELECT u.id, u.username, u.avatar, u.online
                 FROM participants p
@@ -358,39 +314,30 @@ def chat():
                 conv["other_online"]   = 0
         else:
             conv["display_name"]   = c["name"] or "Group"
-            conv["display_avatar"] = "👥"
+            conv["display_avatar"] = "G"
             conv["other_online"]   = 0
 
-        # Unread count
         read_msgs = db.execute("""
             SELECT COUNT(*) as cnt FROM messages
             WHERE conv_id=? AND user_id != ?
-            AND json_extract(read_by,'$') NOT LIKE ?
-        """, (c["id"], user["id"], f'%{user["id"]}%')).fetchone()
+            AND read_by NOT LIKE ?
+        """, (c["id"], user["id"], "%" + str(user["id"]) + "%")).fetchone()
         conv["unread"] = read_msgs["cnt"] if read_msgs else 0
-
-        if c["last_ts"]:
-            conv["last_time"] = format_time(c["last_ts"])
-        else:
-            conv["last_time"] = ""
+        conv["last_time"] = format_time(c["last_ts"]) if c["last_ts"] else ""
 
         if c["last_uid"] == user["id"]:
-            conv["last_text"] = f'You: {c["last_text"] or ""}'
+            conv["last_text"] = "You: " + (c["last_text"] or "")
         else:
             conv["last_text"] = c["last_text"] or ""
 
         conversations.append(conv)
 
-    # All other users (for starting new chats)
     all_users = db.execute(
         "SELECT id, username, avatar, online FROM users WHERE id != ? ORDER BY username",
         (user["id"],)
     ).fetchall()
 
-    return render_template("chat.html",
-                           user=user,
-                           conversations=conversations,
-                           all_users=all_users)
+    return render_template("chat.html", user=user, conversations=conversations, all_users=all_users)
 
 
 @app.route("/api/messages/<int:conv_id>")
@@ -399,7 +346,6 @@ def get_messages(conv_id):
     user = current_user()
     db   = get_db()
 
-    # Verify user is participant
     part = db.execute(
         "SELECT 1 FROM participants WHERE conv_id=? AND user_id=?",
         (conv_id, user["id"])
@@ -416,7 +362,6 @@ def get_messages(conv_id):
         ORDER BY m.ts ASC
     """, (conv_id,)).fetchall()
 
-    # Mark as read
     for msg in msgs:
         if msg["user_id"] != user["id"]:
             try:
@@ -444,7 +389,6 @@ def get_messages(conv_id):
             "is_me":    m["user_id"] == user["id"],
         })
 
-    # Conv info
     conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
     info = {"is_group": conv["is_group"], "name": conv["name"]}
     if not conv["is_group"]:
@@ -499,10 +443,9 @@ def send_message():
         "user_id":  user["id"],
         "username": user["username"],
         "avatar":   user["avatar"],
-        "is_me":    False,  # recipient's perspective
+        "is_me":    False,
     }
 
-    # Notify all participants
     participants = db.execute(
         "SELECT user_id FROM participants WHERE conv_id=?", (conv_id,)
     ).fetchall()
@@ -526,7 +469,6 @@ def new_chat():
     if not user_id:
         return jsonify({"error": "missing user_id"}), 400
 
-    # Check if DM already exists
     existing = db.execute("""
         SELECT c.id FROM conversations c
         JOIN participants p1 ON p1.conv_id=c.id AND p1.user_id=?
@@ -538,9 +480,7 @@ def new_chat():
     if existing:
         return jsonify({"conv_id": existing["id"]})
 
-    conv_id = db.execute(
-        "INSERT INTO conversations (is_group) VALUES (0)"
-    ).lastrowid
+    conv_id = db.execute("INSERT INTO conversations (is_group) VALUES (0)").lastrowid
     db.execute("INSERT INTO participants VALUES (?,?)", (conv_id, user["id"]))
     db.execute("INSERT INTO participants VALUES (?,?)", (conv_id, user_id))
     db.commit()
@@ -570,26 +510,12 @@ def new_group():
     return jsonify({"conv_id": conv_id})
 
 
-@app.route("/api/users")
-@require_login
-def get_users():
-    user = current_user()
-    db   = get_db()
-    users = db.execute(
-        "SELECT id, username, avatar, online, about FROM users WHERE id != ?",
-        (user["id"],)
-    ).fetchall()
-    return jsonify([dict(u) for u in users])
-
-
 @app.route("/stream")
 @require_login
 def stream():
-    """Server-Sent Events endpoint for real-time updates."""
     user = current_user()
     uid  = user["id"]
 
-    # Mark online
     conn = sqlite3.connect(DB_PATH)
     conn.execute("UPDATE users SET online=1 WHERE id=?", (uid,))
     conn.commit()
@@ -598,59 +524,38 @@ def stream():
     q = broker.subscribe(uid)
 
     def event_stream():
-        yield f"data: {json.dumps({'type': 'connected', 'user_id': uid})}\n\n"
+        yield "data: " + json.dumps({"type": "connected", "user_id": uid}) + "\n\n"
         try:
             while True:
                 try:
                     data = q.get(timeout=25)
-                    yield f"data: {json.dumps(data)}\n\n"
+                    yield "data: " + json.dumps(data) + "\n\n"
                 except queue.Empty:
-                    yield "data: {\"type\":\"ping\"}\n\n"
+                    yield 'data: {"type":"ping"}\n\n'
         except GeneratorExit:
             broker.unsubscribe(uid, q)
-            conn2 = sqlite3.connect(DB_PATH)
-            conn2.execute("UPDATE users SET online=0 WHERE id=?", (uid,))
-            conn2.commit()
-            conn2.close()
+            try:
+                conn2 = sqlite3.connect(DB_PATH)
+                conn2.execute("UPDATE users SET online=0 WHERE id=?", (uid,))
+                conn2.commit()
+                conn2.close()
+            except Exception:
+                pass
 
     return Response(
         event_stream(),
         mimetype="text/event-stream",
         headers={
-            "Cache-Control":   "no-cache",
-            "X-Accel-Buffering":"no",
-            "Connection":      "keep-alive",
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
         }
     )
 
 
-# ─── ENTRY POINT ─────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import socket
+with app.app_context():
     init_db()
 
-    # Get local IP for sharing on LAN
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-    except Exception:
-        local_ip = "127.0.0.1"
-    finally:
-        s.close()
 
-    print("\n" + "="*55)
-    print("  💬  WhatsApp Clone  -  Python Flask")
-    print("="*55)
-    print(f"  Local:    http://localhost:5000")
-    print(f"  Network:  http://{local_ip}:5000  ← share this!")
-    print("="*55)
-    print("\n  Demo accounts (username / password):")
-    print("    alice  / alice123")
-    print("    bob    / bob123")
-    print("    carol  / carol123")
-    print("    dave   / dave123")
-    print("\n  Press Ctrl+C to stop\n")
-
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
