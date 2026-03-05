@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp Clone - Login</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #111B21;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card {
+    background: #202C33;
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 100%; max-width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .logo { text-align: center; margin-bottom: 32px; }
+  .logo-icon {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: linear-gradient(135deg, #25D366, #128C7E);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; margin: 0 auto 16px;
+  }
+  h1 { color: #E9EDEF; font-size: 24px; font-weight: 600; }
+  .subtitle { color: #8696A0; font-size: 14px; margin-top: 4px; }
+
+  label { display: block; color: #8696A0; font-size: 13px; margin-bottom: 6px; margin-top: 20px; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 12px 14px;
+    background: #2A3942; border: 1px solid #3B4A54;
+    border-radius: 8px; color: #E9EDEF; font-size: 15px;
+    outline: none; transition: border-color 0.2s;
+  }
+  input:focus { border-color: #25D366; }
+  input::placeholder { color: #8696A0; }
+
+  .btn {
+    display: block; width: 100%; margin-top: 28px;
+    padding: 13px; background: #25D366;
+    color: #111B21; font-size: 16px; font-weight: 700;
+    border: none; border-radius: 8px; cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+  }
+  .btn:hover { background: #20c05a; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+
+  .error {
+    background: rgba(234,0,56,0.15); border: 1px solid rgba(234,0,56,0.4);
+    color: #EA0038; padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; margin-top: 16px;
+  }
+  .footer { text-align: center; margin-top: 24px; color: #8696A0; font-size: 14px; }
+  .footer a { color: #25D366; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .demo-box {
+    background: #2A3942; border-radius: 8px; padding: 14px;
+    margin-top: 20px; font-size: 13px; color: #8696A0;
+  }
+  .demo-box strong { color: #E9EDEF; display: block; margin-bottom: 8px; }
+  .demo-row {
+    display: flex; gap: 8px; align-items: center; margin-top: 6px;
+    cursor: pointer; padding: 4px; border-radius: 4px;
+    transition: background 0.15s;
+  }
+  .demo-row:hover { background: #374c58; }
+  .demo-row .av {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #25D366; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">💬</div>
+    <h1>WhatsApp Clone</h1>
+    <p class="subtitle">Built with Python &amp; Flask</p>
+  </div>
+
+  <form method="POST" id="loginForm">
+    <label>Username</label>
+    <input type="text" name="username" id="usernameInput" placeholder="Enter your username" required autofocus>
+
+    <label>Password</label>
+    <input type="password" name="password" placeholder="Enter your password" required>
+
+    {% if error %}
+    <div class="error">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <button class="btn" type="submit">Sign In</button>
+  </form>
+
+  <div class="demo-box">
+    <strong>🎯 Demo Accounts (click to fill)</strong>
+    {% for user, pw, av in [('alice','alice123','🧑‍💻'),('bob','bob123','🎸'),('carol','carol123','📚'),('dave','dave123','⚽')] %}
+    <div class="demo-row" onclick="fillDemo('{{user}}','{{pw}}')">
+      <div class="av">{{av}}</div>
+      <span><b style="color:#E9EDEF">{{user}}</b> / {{pw}}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="footer">
+    Don't have an account? <a href="/register">Register</a>
+  </div>
+</div>
+
+<script>
+function fillDemo(u, p) {
+  document.querySelector('[name=username]').value = u;
+  document.querySelector('[name=password]').value = p;
+}
+</script>
+</body>
+</html>
