@@ -1,0 +1,3 @@
+# WhatsApp Clone - Python Flask
+# Requirements (only Flask needed, everything else is Python stdlib)
+Flask>=2.0
